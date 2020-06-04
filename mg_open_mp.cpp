@@ -10,6 +10,11 @@
 /* This serial code forms the starting point for a final                      */
 /* project in CME 342: Parallel Methods in Numerical Analysis                 */
 /* at Stanford University.                                                    */
+/*									      */
+/* Modified: cjue1325							      */
+/* Date: 2020.06.05                                                           */
+/* 								              */
+/* To satisfy the requirements of the final projects in CA class              */
 /******************************************************************************/
 
 #include <stdio.h>
@@ -19,6 +24,7 @@
 #include <cmath>
 #include <string.h>
 #include <omp.h>
+
 
 using namespace std;
 
@@ -46,7 +52,7 @@ const int FINE_MESH = 0;
 #define MG_CYCLES 10000
 
 //! Flag for disabling multigrid (Disable MG = 1, Use MG = 0)
-#define DISABLE_MG 0
+#define DISABLE_MG 0  
 
 //! Number of smoothing sweeps at each stage of the multigrid
 #define NUM_SWEEP 3
@@ -55,7 +61,7 @@ const int FINE_MESH = 0;
 #define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 1
+#define VISUALIZE 0
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1
@@ -64,7 +70,10 @@ const int FINE_MESH = 0;
 #define TOLERANCE 12.0
 
 //! Applied the openMP
-#define OMP
+//#define OMP
+
+//! Absolute criteria for tolerance (different from oritinal TOLERANCE)
+#define pow_tol -10
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -202,7 +211,7 @@ int main(int argc, char* argv[]) {
                                 n_nodes);
     
     //if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
-    if (abs(residual-residual_old) < pow(10,-6)) stop_calc = true;
+    if (residual < pow(10,pow_tol)) stop_calc = true;
     residual_old=residual;
    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
     //! Depending on the cycle number, write a solution file if requested
@@ -598,10 +607,11 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   int mv_node;
   int thread = 8;
   for (int iter = 0; iter < n_sweeps; iter++) {
+#ifdef OMP
 # pragma omp parallel num_threads (thread)
 {  
 # 	pragma omp for 
-     
+#endif    
 
 	// odd	
       for (int i = 1; i < n_nodes-1; i++) {
@@ -615,7 +625,9 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
 
       }
     }
+#ifdef OMP
 #	pragma omp for
+#endif
       for (int i = 1; i < n_nodes-1; i++) {
       if (i%2!=0){mv_node=2;}
       else if (i%2==0){mv_node=1;}
@@ -628,11 +640,9 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
       }
     }
 
- 
-
-
+#ifdef OMP 
 }//prama thread
-  
+#endif  
 }//iter loop
 }//function
 
@@ -764,8 +774,8 @@ double compute_residual(double **phi, double **f, double **residual,
   norm = 0.0;
   for (int i = 1; i < n_nodes-1; i++) {
     for (int j = 1; j < n_nodes-1; j++) {
-      residual[i][j] = f[i][j] + (phi[i][j-1] + phi[i-1][j] +
-                                  phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j])/h2;
+      residual[i][j] = (h2*f[i][j] + (phi[i][j-1] + phi[i-1][j] +
+                                  phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j]))/phi[i][j]/pow(n_nodes-1.0,2.0);
       norm += residual[i][j]*residual[i][j];
     }
   }
