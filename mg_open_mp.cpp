@@ -18,6 +18,8 @@
 #include <iostream>
 #include <cmath>
 #include <string.h>
+#include <omp.h>
+
 using namespace std;
 
 //! Enumerated types for available smoothers.
@@ -61,7 +63,8 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-
+//! Applied the openMP
+#define OMP
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -592,18 +595,46 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   
   double relax = 1.1;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
-  
+  int mv_node;
+  int thread = 8;
   for (int iter = 0; iter < n_sweeps; iter++) {
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
+# pragma omp parallel num_threads (thread)
+{  
+# 	pragma omp for 
+     
+
+	// odd	
+      for (int i = 1; i < n_nodes-1; i++) {
+      if (i%2!=0){mv_node=1;}
+      else if (i%2==0){mv_node=2;}
+
+      for (int j = mv_node; j < n_nodes-1; j+=2) {
+        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
+                                                     phi[i+1][j] + phi[i][j+1] +
+						     h2*f[i][j])/4.0;
+
+      }
+    }
+#	pragma omp for
+      for (int i = 1; i < n_nodes-1; i++) {
+      if (i%2!=0){mv_node=2;}
+      else if (i%2==0){mv_node=1;}
+
+      for (int j = mv_node; j < n_nodes-1; j+=2) {
         phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
                                                      phi[i+1][j] + phi[i][j+1] +
                                                      h2*f[i][j])/4.0;
+
       }
     }
-  }
+
+ 
+
+
+}//prama thread
   
-}
+}//iter loop
+}//function
 
 void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
                        int level) {
