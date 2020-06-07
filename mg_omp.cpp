@@ -52,10 +52,10 @@ const int FINE_MESH = 0;
 #define NUM_SWEEP 3
 
 //! Choice of iterative smoother (see SMOOTHER_T above)
-#define SMOOTHER 1
+#define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 1
+#define VISUALIZE 0
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1
@@ -63,9 +63,13 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-#define pow_tol -6.0
+#define pow_tol -10
 
 #define OMP
+
+#define RELAX 1.7
+
+#define thread 8 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -141,7 +145,7 @@ int main(int argc, char* argv[]) {
   bool visualize = VISUALIZE, stop_calc = false;
   int freq = FREQUENCY, n_mgcycles = MG_CYCLES, n_levels, n_sweeps = NUM_SWEEP;
   int i_mgcycles = 0, n_nodes = NUM_NODES, mg_levels = 0;
-  double tolerance = TOLERANCE, residual_0, residual;
+  double tolerance = TOLERANCE, residual_0, residual,residual_old;
   
   //! Check if we have specified a number of nodes or multigrid levels
   //! on the command line. Other command line inputs could be added here...
@@ -202,10 +206,11 @@ int main(int argc, char* argv[]) {
     residual = compute_residual(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH],
                                 n_nodes);
                                 
-    //if (residual < pow(10,pow_tol)) stop_calc = true;
-    
-    if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
    
+    
+   // if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
+   if (abs(residual-residual_old) < pow(10,pow_tol)) stop_calc = true;
+   residual_old=residual;
    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
     //! Depending on the cycle number, write a solution file if requested
     
@@ -592,14 +597,15 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   //! parameter > 1.0 is chosen, it is over-relaxation.
   //! Set the relaxation parameter and compute the mesh spacing.
   
-  double relax = 1.1;
+  double relax = RELAX;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
   
   int mv_node;
-  int thread = 8;
+  
   for (int iter = 0; iter < n_sweeps; iter++) {
 #ifdef OMP
 # pragma omp parallel num_threads (thread)
+//printf("OpenMp ing......");
 {  
 # 	pragma omp for 
 #endif    

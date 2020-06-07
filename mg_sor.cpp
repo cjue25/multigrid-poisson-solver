@@ -43,7 +43,7 @@ const int FINE_MESH = 0;
 #define NUM_NODES 257
 
 //! Maximum number of multigrid cycles
-#define MG_CYCLES 10000
+#define MG_CYCLES 100000
 
 //! Flag for disabling multigrid (Disable MG = 1, Use MG = 0)
 #define DISABLE_MG 1
@@ -140,7 +140,7 @@ int main(int argc, char* argv[]) {
   bool visualize = VISUALIZE, stop_calc = false;
   int freq = FREQUENCY, n_mgcycles = MG_CYCLES, n_levels, n_sweeps = NUM_SWEEP;
   int i_mgcycles = 0, n_nodes = NUM_NODES, mg_levels = 0;
-  double tolerance = TOLERANCE, residual_0, residual;
+  double tolerance = TOLERANCE, residual_0, residual,residual_old;
   
   //! Check if we have specified a number of nodes or multigrid levels
   //! on the command line. Other command line inputs could be added here...
@@ -196,7 +196,9 @@ int main(int argc, char* argv[]) {
                                 
     
    // if (residual < pow(10,pow_tol)) stop_calc = true;
-    if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
+    //if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
+       if (abs(residual-residual_old) < pow(10,-10)) stop_calc = true;
+   residual_old=residual;
    
    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
     //! Depending on the cycle number, write a solution file if requested
@@ -465,10 +467,10 @@ double compute_residual(double **phi, double **f, double **residual,
   norm = 0.0;
   for (int i = 1; i < n_nodes-1; i++) {
     for (int j = 1; j < n_nodes-1; j++) {
-      //residual[i][j] = f[i][j] + (phi[i][j-1] + phi[i-1][j] +
-      //                          phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j])/h2;
-      residual[i][j] = (h2*f[i][j] + (phi[i][j-1] + phi[i-1][j] +
-                                  phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j]))/phi[i][j]/pow(n_nodes-1.0,2.0);
+        residual[i][j] = f[i][j] + (phi[i][j-1] + phi[i-1][j] +
+                                phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j])/h2;
+      //residual[i][j] = (h2*f[i][j] + (phi[i][j-1] + phi[i-1][j] +
+      //                            phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j]))/phi[i][j]/pow(n_nodes-1.0,2.0);
                                 
                                   
       norm += residual[i][j]*residual[i][j];

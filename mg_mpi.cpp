@@ -52,7 +52,7 @@ const int FINE_MESH = 0;
 #define NUM_SWEEP 3
 
 //! Choice of iterative smoother (see SMOOTHER_T above)
-#define SMOOTHER 1
+#define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
 #define VISUALIZE 0
@@ -688,58 +688,6 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   
 }//iter loop
 }//function
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
                        int level) {

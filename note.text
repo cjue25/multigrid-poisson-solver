@@ -1,2 +1,25 @@
 plot_gif.py can see the solution evolution
 Use animate .gif to see the result
+
+原始 mg 和 OpenMP
+使用檔案: mg_omp.cpp
+
+- line 68: 
+開啟 OpenMP             -> #define omp
+關閉 OpenMP (for 原始)  -> //define omp
+
+- line 70:
+調 SOR relax paramgeter (測1.1-1.7)  -> #define RELAX 1.7
+
+- line 72:
+調 OpenMP thread        (測1-8)      -> #define thread 8
+
+
+編譯程式檔案:
+- command: sh compile.sh mg_omp.cpp
+
+換網格點輸出結果:
+- command: ./mg_omp.out 輸入網格數量(奇數)
+           Ex: 129 格點  -> ./mg_omp.out 129
+           
+
