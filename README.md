@@ -12,4 +12,4 @@ We modified the mg basic code from CME 342: Parallel Methods in Numerical Analys
 - Extract and modify the SOR part to be the individual code to impletment (count one iteration for each calculation)
 
 Others
-- Add `plot_gif.py` file to visualize the exact solution, solution animation with iteraction, error
+jj- Add `plot_gif.py` file to visualize the exact solution, solution animation with iteraction, error
