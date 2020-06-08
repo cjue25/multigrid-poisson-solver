@@ -1,3 +1,5 @@
+/*Modified: cjue1325 2020.06.07*/   
+
 /******************************************************************************/
 /* File: multigrid_poisson.cpp                                                */
 /* ---------------------------                                                */
@@ -12,13 +14,13 @@
 /* at Stanford University.                                                    */
 /******************************************************************************/
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <cmath>
+#include <math.h>
 #include <string.h>
-#include <omp.h>
+#include <mpi.h>
 
 using namespace std;
 
@@ -55,7 +57,7 @@ const int FINE_MESH = 0;
 #define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 1
+#define VISUALIZE 0
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1
@@ -65,11 +67,7 @@ const int FINE_MESH = 0;
 
 #define pow_tol -10
 
-#define OMP
-
 #define RELAX 1.7
-
-#define thread 8 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -137,9 +135,16 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
 /******************************************************************************/
 /* Main function driving the high-level solver execution.                     */
 /******************************************************************************/
+int NRank, MyRank;
+const int RootRank  = 0;
+int main(int argc, char *argv[]) {
+    // initialize MPI
 
-int main(int argc, char* argv[]) {
-  
+   MPI_Init( &argc, &argv );
+   MPI_Comm_rank( MPI_COMM_WORLD, &MyRank );
+   MPI_Comm_size( MPI_COMM_WORLD, &NRank );
+
+   
   //! Local variables and settings (defined above) for the poisson problem
   
   bool visualize = VISUALIZE, stop_calc = false;
@@ -168,7 +173,7 @@ int main(int argc, char* argv[]) {
   if (DISABLE_MG) n_levels = 1;
   
   //! Print some initial information to the console
-  
+  if (MyRank == RootRank){
   write_settings(n_nodes, n_levels, n_mgcycles);
   
   //! Create the fine mesh and store the x and y coordinates
@@ -192,32 +197,44 @@ int main(int argc, char* argv[]) {
   //! Write the initial residual and solution files if requested
   write_output(phi[FINE_MESH], phi_exact, x[FINE_MESH],
                y[FINE_MESH], n_nodes, i_mgcycles, residual_0, visualize);
+  }
+
+ 
+ 
+ 
+  int MPI_Barrier(MPI_Comm comm);
+
+  MPI_Bcast( &residual_0, 1, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
   
-  //! Main solver loop over the prescribed number of multigrid cycles
   
-  for (i_mgcycles = 1; i_mgcycles <= n_mgcycles; i_mgcycles++) {
     
+    //! Main solver loop over the prescribed number of multigrid cycles
+  
+
+  for (i_mgcycles = 1; i_mgcycles <= n_mgcycles; i_mgcycles++) {
+     
     //! Call the recursive multigrid cycle method
     
     multigrid_cycle(phi, f, aux, n_nodes, n_sweeps, n_levels, FINE_MESH);
-    
+    stop_calc = true;
     //! Check the solution residual and for convergence on the fine mesh
-    
+    if (MyRank == RootRank){   
     residual = compute_residual(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH],
                                 n_nodes);
-                                
-   
-    
-   // if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
-   if (abs(residual-residual_old) < pow(10,pow_tol)) stop_calc = true;
-   residual_old=residual;
+    }                                
+    //if (residual < pow(10,pow_tol)) stop_calc = true;
+    MPI_Bcast( &residual, 1, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
+
+    //if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
+    if (abs(residual-residual_old)<pow(10,pow_tol)) stop_calc = true;
+    residual_old=residual;
    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
     //! Depending on the cycle number, write a solution file if requested
-    
+    if (MyRank == RootRank){
     if ((i_mgcycles%freq == 0) || stop_calc)
       write_output(phi[FINE_MESH], phi_exact, x[FINE_MESH], y[FINE_MESH],
                    n_nodes, i_mgcycles, residual, visualize);
-    
+    }
     //! Stop the simulation if the convergence criteria is reached
     
     if (stop_calc) break;
@@ -230,11 +247,12 @@ int main(int argc, char* argv[]) {
   
   //! Print final message to console
   
-  if (stop_calc) {
+  if (stop_calc && MyRank==RootRank) {
     printf("\nConverged %3.1f orders of magnitude...\n", tolerance);
     printf("#============================================#\n\n");
-  } else printf("\n#============================================#\n\n");
+  } else if (MyRank==RootRank) printf("\n#============================================#\n\n");
   
+  MPI_Finalize();
   return 0;
 }
 
@@ -475,6 +493,7 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
       smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
       break;
     case SOR:
+      printf( "SOR World on rank %d/%d\n", MyRank, NRank );
       smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
       break;
     default:
@@ -486,7 +505,7 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
   
   //! If we are not on the coarsest mesh, continue the downstroke of
   //! the multigrid cycle in a recursive manner.
-  
+  printf( "level World on rank %d/%d\n", MyRank, NRank );
   if (level < n_levels-1) {
     
     //! Restrict the fine solution down onto the coarser grid by
@@ -590,7 +609,7 @@ void smooth_gauss_seidel(double **phi, double **f, double **aux,
 
 void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
                 int n_sweeps) {
-  
+  printf( "smooth World on rank %d/%d\n", MyRank, NRank );
   //! Smooth the system using a prescribed number of SOR sweeps. If the
   //! relaxation factor is set to 1.0, Gauss_Seidel it recovered. For
   //! a relax parameter < 1.0 it is under-relaxation, while if a relax
@@ -600,46 +619,42 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   double relax = RELAX;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
   
-  int mv_node;
-  
+   // prepare the send buffer
+   const int SendCount = n_nodes*n_nodes/2;
+   const int RecvCount = SendCount;
+   const int bcCount=n_nodes;
+   const int tag = 0;
+   double RecvBuf[n_nodes/2][n_nodes];
+   double r1_bc[n_nodes];
+   double bc_rev[n_nodes];
+
+   const int TargetRank = (MyRank+1)%2;
   for (int iter = 0; iter < n_sweeps; iter++) {
-#ifdef OMP
-# pragma omp parallel num_threads (thread)
-//printf("OpenMp ing......");
-{  
-# 	pragma omp for 
-#endif    
+  
+  MPI_Scatter( &**phi, SendCount, MPI_DOUBLE,&RecvBuf, RecvCount, MPI_DOUBLE,RootRank, MPI_COMM_WORLD );
+   getchar();
+  if (MyRank == RootRank){
+   for (int i=1;i<((int)n_nodes/2)-1;i++){
+   for (int j=1;j<(n_nodes-1);j++){
 
-	// odd	
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=1;}
-      else if (i%2==0){mv_node=2;}
-
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
-        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
-                                                     phi[i+1][j] + phi[i][j+1] +
-                                                     h2*f[i][j])/4.0;
-
-      }
-    }
-#ifdef OMP
-#	pragma omp for
-#endif
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=2;}
-      else if (i%2==0){mv_node=1;}
-
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
-        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
-                                                     phi[i+1][j] + phi[i][j+1] +
-                                                     h2*f[i][j])/4.0;
-
-      }
-    }
-
-#ifdef OMP 
-}//prama thread
-#endif  
+	      RecvBuf[i][j] = (1.0 - relax)*RecvBuf[i][j] + relax*(RecvBuf[i][j-1] + RecvBuf[i-1][j] +\
+                         RecvBuf[i+1][j] + RecvBuf[i][j+1] + h2*f[i][j])/4.0;
+    }//j node
+  }// i node
+}// rootrank
+              
+   else {
+   for (int i=1;i<((int)n_nodes/2)-1;i++){
+   for (int j=1;j<(n_nodes-1);j++){
+  
+        RecvBuf[i][j] = (1.0 - relax)*RecvBuf[i][j] + relax*(RecvBuf[i][j-1] + RecvBuf[i-1][j] +\
+                         RecvBuf[i+1][j] + RecvBuf[i][j+1] + h2*f[i][j])/4.0;
+        }
+     }
+   }// second rank
+   
+             
+  
 }//iter loop
 }//function
 

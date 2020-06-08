@@ -1,3 +1,5 @@
+/*Modified: cjue1325 2020.06.07*/   
+
 /******************************************************************************/
 /* File: multigrid_poisson.cpp                                                */
 /* ---------------------------                                                */
@@ -55,7 +57,7 @@ const int FINE_MESH = 0;
 #define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 0
+#define VISUALIZE 1
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1

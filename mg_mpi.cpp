@@ -63,7 +63,7 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-#define pow_tol -6.0
+#define pow_tol -10.0
 
 #define OMP
 /******************************************************************************/
@@ -148,7 +148,7 @@ int main(int argc, char *argv[]) {
   bool visualize = VISUALIZE, stop_calc = false;
   int freq = FREQUENCY, n_mgcycles = MG_CYCLES, n_levels, n_sweeps = NUM_SWEEP;
   int i_mgcycles = 0, n_nodes = NUM_NODES, mg_levels = 0;
-  double tolerance = TOLERANCE, residual_0, residual;
+  double tolerance = TOLERANCE, residual_0, residual,residual_old;
   
   //! Check if we have specified a number of nodes or multigrid levels
   //! on the command line. Other command line inputs could be added here...
@@ -222,10 +222,11 @@ int main(int argc, char *argv[]) {
     }                                
     //if (residual < pow(10,pow_tol)) stop_calc = true;
     MPI_Bcast( &residual, 1, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
-
-    if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
-
-   // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
+    MPI_Bcast(&residual_old,1,MPI_DOUBLE,RootRank, MPI_COMM_WORLD );
+    //if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
+    if (abs(residual-residual_old)<pow(10,pow_tol)) stop_calc=true; 
+    residual_old=residual;
+    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
     //! Depending on the cycle number, write a solution file if requested
     if (MyRank == RootRank){
     if ((i_mgcycles%freq == 0) || stop_calc)

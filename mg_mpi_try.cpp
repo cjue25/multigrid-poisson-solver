@@ -63,9 +63,10 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-#define pow_tol -6.0
+#define pow_tol -10.0
 
-#define OMP
+
+
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -148,7 +149,7 @@ int main(int argc, char *argv[]) {
   bool visualize = VISUALIZE, stop_calc = false;
   int freq = FREQUENCY, n_mgcycles = MG_CYCLES, n_levels, n_sweeps = NUM_SWEEP;
   int i_mgcycles = 0, n_nodes = NUM_NODES, mg_levels = 0;
-  double tolerance = TOLERANCE, residual_0, residual;
+  double tolerance = TOLERANCE, residual_0, residual,residual_old;
   
   //! Check if we have specified a number of nodes or multigrid levels
   //! on the command line. Other command line inputs could be added here...
@@ -212,9 +213,9 @@ int main(int argc, char *argv[]) {
   for (i_mgcycles = 1; i_mgcycles <= n_mgcycles; i_mgcycles++) {
      
     //! Call the recursive multigrid cycle method
-    printf("mulstart = %d rank=%d.........\n",i_mgcycles,MyRank);
+   
     multigrid_cycle(phi, f, aux, n_nodes, n_sweeps, n_levels, FINE_MESH);
-    printf("sus at mpi"); 
+  
     //! Check the solution residual and for convergence on the fine mesh
     if (MyRank == RootRank){   
     residual = compute_residual(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH],
@@ -223,8 +224,9 @@ int main(int argc, char *argv[]) {
     //if (residual < pow(10,pow_tol)) stop_calc = true;
     MPI_Bcast( &residual, 1, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
 
-    if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
-
+    //if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
+    if (abs(residual-residual_old)<pow(10,pow_tol)) stop_calc = true;
+    residual_old=residual;
    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
     //! Depending on the cycle number, write a solution file if requested
     if (MyRank == RootRank){
@@ -489,9 +491,7 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
     case GAUSS_SEIDEL:
       smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
       break;
-    case SOR:
-      
-      printf("sorbeginning.........\n");
+    case SOR: 
       smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
       break;
     default:
@@ -503,7 +503,7 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
   
   //! If we are not on the coarsest mesh, continue the downstroke of
   //! the multigrid cycle in a recursive manner.
-  printf("start restric, rank = %d",MyRank);
+  
   if (level < n_levels-1) {
     
     //! Restrict the fine solution down onto the coarser grid by
@@ -613,8 +613,8 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   //! a relax parameter < 1.0 it is under-relaxation, while if a relax
   //! parameter > 1.0 is chosen, it is over-relaxation.
   //! Set the relaxation parameter and compute the mesh spacing.
-  printf("sorfunction.........Rank=%d",MyRank);
-  double relax = 1.1;
+  
+  double relax = 1.7;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
   
    // prepare the send buffer
@@ -628,9 +628,9 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
      double bc_rev[n_nodes];
 
       const int TargetRank = (MyRank+1)%2;
-      printf("SC = %d, RA=%d",SendCount,MyRank);
+     
       
-  MPI_Bcast( &(**phi), n_nodes*n_nodes, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
+  MPI_Bcast( &**phi, n_nodes*n_nodes, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
   
   for (int iter = 0; iter < n_sweeps; iter++) {
     for (int i = 1; i < n_nodes-1; i++) {

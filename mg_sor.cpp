@@ -1,3 +1,5 @@
+/*Modified: cjue1325 2020.06.07*/   
+
 /******************************************************************************/
 /* File: multigrid_poisson.cpp                                                */
 /* ---------------------------                                                */
@@ -63,9 +65,10 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-#define pow_tol -6.0
+#define pow_tol -10.0
 
-#define OMP
+#define RELAX 1.7
+
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -192,12 +195,10 @@ int main(int argc, char* argv[]) {
        
     //! Check the solution residual and for convergence on the fine mesh
    residual = smooth_sor(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH], n_nodes, n_sweeps);
-   
-                                
     
    // if (residual < pow(10,pow_tol)) stop_calc = true;
     //if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
-       if (abs(residual-residual_old) < pow(10,-10)) stop_calc = true;
+    if (abs(residual-residual_old) < pow(10,pow_tol)) stop_calc = true;
    residual_old=residual;
    
    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
@@ -404,17 +405,13 @@ void intitialize_solution(double **phi, double **phi_exact, double **f,
 
 double smooth_sor(double **phi, double **f,double **residual, int n_nodes, int n_sweeps) {
    
-  double relax = 1.7,norm = 0.0;
+  double norm = 0.0;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
-  
+  double relax = RELAX;
   int mv_node;
-  int thread = 8;
-  for (int iter = 0; iter < n_sweeps; iter++) {
-#ifdef OMP
-# pragma omp parallel num_threads (thread)
-{  
-# 	pragma omp for 
-#endif    
+
+for (int iter = 0; iter < n_sweeps; iter++) {
+  
 
 	// odd	
       for (int i = 1; i < n_nodes-1; i++) {
@@ -422,35 +419,37 @@ double smooth_sor(double **phi, double **f,double **residual, int n_nodes, int n
       else if (i%2==0){mv_node=2;}
 
       for (int j = mv_node; j < n_nodes-1; j+=2) {
-      residual[i][j]=phi[i+1][j]+phi[i-1][j]+phi[i][j+1]+phi[i][j-1]-4.0*phi[i][j]+h2*f[i][j];
-      phi[i][j] = phi[i][j]+relax*residual[i][j]/4.0;
+        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
+                                                     phi[i+1][j] + phi[i][j+1] +
+                                                     h2*f[i][j])/4.0;
 
       }
     }
-#ifdef OMP
-#	pragma omp for
-#endif
+
       for (int i = 1; i < n_nodes-1; i++) {
       if (i%2!=0){mv_node=2;}
       else if (i%2==0){mv_node=1;}
 
       for (int j = mv_node; j < n_nodes-1; j+=2) {
-        residual[i][j]=phi[i+1][j]+phi[i-1][j]+phi[i][j+1]+phi[i][j-1]-4.0*phi[i][j]+h2*f[i][j];
-        phi[i][j] = phi[i][j]+relax*residual[i][j]/4.0;
+        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
+                                                     phi[i+1][j] + phi[i][j+1] +
+                                                     h2*f[i][j])/4.0;
 
       }
     }
 
-#ifdef OMP 
-}//prama thread
-#endif  
 }//iter loop
+
   for (int i=1;i<(n_nodes-1);i++){
       for (int j=1;j<(n_nodes-1);j++){
-	norm+=abs(residual[i][j]/phi[i][j])/pow(n_nodes-1,2);		   
-  //printf("%f %f",residual[i][j],phi[i][j]);   
+      residual[i][j] = f[i][j] + (phi[i][j-1] + phi[i-1][j] +
+                                phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j])/h2;
+       norm += residual[i][j]*residual[i][j];                         
+	//norm+=abs(residual[i][j]/phi[i][j])/pow(n_nodes-1,2);		    
       }
       }
+      norm = sqrt(norm);
+      return norm;
 }//function
 
 
