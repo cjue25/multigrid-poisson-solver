@@ -1,3 +1,5 @@
+/*Modified: cjue1325 2020.06.07*/   
+
 /******************************************************************************/
 /* File: multigrid_poisson.cpp                                                */
 /* ---------------------------                                                */
@@ -12,13 +14,13 @@
 /* at Stanford University.                                                    */
 /******************************************************************************/
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
-#include <cmath>
+#include <math.h>
 #include <string.h>
-#include <omp.h>
+#include <mpi.h>
 
 using namespace std;
 
@@ -40,7 +42,7 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 17
+#define NUM_NODES 256
 
 //! Maximum number of multigrid cycles
 #define MG_CYCLES 10000
@@ -55,7 +57,7 @@ const int FINE_MESH = 0;
 #define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 1
+#define VISUALIZE 0
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1
@@ -63,13 +65,9 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-#define pow_tol -10.0
-
-//#define OMP
+#define pow_tol -10
 
 #define RELAX 1.7
-
-//#define thread 8 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -137,9 +135,16 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
 /******************************************************************************/
 /* Main function driving the high-level solver execution.                     */
 /******************************************************************************/
+int NRank, MyRank;
+const int RootRank  = 0;
+int main(int argc, char *argv[]) {
+    // initialize MPI
 
-int main(int argc, char* argv[]) {
-  
+   MPI_Init( &argc, &argv );
+   MPI_Comm_rank( MPI_COMM_WORLD, &MyRank );
+   MPI_Comm_size( MPI_COMM_WORLD, &NRank );
+
+   
   //! Local variables and settings (defined above) for the poisson problem
   
   bool visualize = VISUALIZE, stop_calc = false;
@@ -168,9 +173,9 @@ int main(int argc, char* argv[]) {
   if (DISABLE_MG) n_levels = 1;
   
   //! Print some initial information to the console
-  
+  if (MyRank == RootRank){
   write_settings(n_nodes, n_levels, n_mgcycles);
-  
+  }
   //! Create the fine mesh and store the x and y coordinates
   
   generate_fine_mesh(x[FINE_MESH], y[FINE_MESH], n_nodes, visualize);
@@ -190,52 +195,70 @@ int main(int argc, char* argv[]) {
                                 n_nodes);
   
   //! Write the initial residual and solution files if requested
+  if (MyRank == RootRank){
   write_output(phi[FINE_MESH], phi_exact, x[FINE_MESH],
                y[FINE_MESH], n_nodes, i_mgcycles, residual_0, visualize);
+  }
+
+ 
+ 
+ // printf("hihi wating %d\n",MyRank);
+  MPI_Barrier(MPI_COMM_WORLD);
+  //printf("hihi barrie %d\n",MyRank);
+
+  //MPI_Bcast( &residual_0, 1, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
   
-  //! Main solver loop over the prescribed number of multigrid cycles
   
+    
+    //! Main solver loop over the prescribed number of multigrid cycles
+  
+  int count=0;
   for (i_mgcycles = 1; i_mgcycles <= n_mgcycles; i_mgcycles++) {
-    
+     count++;
     //! Call the recursive multigrid cycle method
-    
+  //  printf("start the mg %d",MyRank);
     multigrid_cycle(phi, f, aux, n_nodes, n_sweeps, n_levels, FINE_MESH);
+   // printf("done the mg %d",MyRank);
+    MPI_Barrier(MPI_COMM_WORLD);
     
-    //! Check the solution residual and for convergence on the fine mesh
-    
+    if (MyRank == RootRank){   
     residual = compute_residual(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH],
                                 n_nodes);
-                                
-   
+    }                                
+    //if (residual < pow(10,pow_tol)) stop_calc = true;
+    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Bcast( &residual, 1, MPI_DOUBLE, RootRank, MPI_COMM_WORLD );
     
-   // if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
-   if (abs(residual-residual_old) < pow(10,pow_tol)) stop_calc = true;
-   residual_old=residual;
-   // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
-    //! Depending on the cycle number, write a solution file if requested
-    
+    //if (abs(residual-residual_old)<pow(10,-3)) stop_calc = true;
+    //residual_old=residual;
+    if (count==3) stop_calc=true;
+    if (MyRank == RootRank){
     if ((i_mgcycles%freq == 0) || stop_calc)
       write_output(phi[FINE_MESH], phi_exact, x[FINE_MESH], y[FINE_MESH],
                    n_nodes, i_mgcycles, residual, visualize);
-    
-    //! Stop the simulation if the convergence criteria is reached
-    
+    }
+
     if (stop_calc) break;
     
   }
   
   //! Free all memory used by the solver
+  if (stop_calc && MyRank == RootRank) {
+    printf("\nConverged %3.1f orders of magnitude...\n", tolerance);
+    printf("#============================================#\n\n");
+  } else if (MyRank==RootRank) printf("\n#============================================#\n\n");
   
-  deallocate_arrays(phi, phi_exact, f, x, y, aux, n_nodes, n_levels);
+
+  
+  MPI_Finalize();
+  
+  //deallocate_arrays(phi, phi_exact, f, x, y, aux, n_nodes, n_levels);
   
   //! Print final message to console
   
-  if (stop_calc) {
-    printf("\nConverged %3.1f orders of magnitude...\n", tolerance);
-    printf("#============================================#\n\n");
-  } else printf("\n#============================================#\n\n");
   
-  return 0;
+  
+  return EXIT_SUCCESS;
 }
 
 void write_settings(int n_nodes, int n_levels, int n_mgcycles) {
@@ -273,9 +296,10 @@ int allocate_arrays(double ****phi, double ***phi_exact, double ****f,
   
   bool coarsen = true; int n_levels = 1; int nodes = n_nodes;
   while (coarsen) {
-    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 3)) {
-      nodes = (nodes-1)/2 + 1;
+    if ((nodes%2 == 0) && (nodes>= 8)) {
+      nodes = (nodes)/2 ;
       n_levels++;
+      printf("%d / %d",nodes,n_levels);
     } else {
       coarsen = false;
     }
@@ -323,7 +347,7 @@ int allocate_arrays(double ****phi, double ***phi_exact, double ****f,
     
     //! Compute number of nodes on the next coarse level
     
-    nodes = (nodes-1)/2 + 1;
+    nodes = (nodes)/2 ;
     
   }
   
@@ -396,7 +420,7 @@ void coarsen_mesh(double ***x, double ***y, int n_nodes,
     
     //! Set up the new index values and increment the mesh level
     
-    int n_coarse      = (n_nodes-1)/(2) + 1;
+    int n_coarse      = (n_nodes)/(2) ;
     int levels_coarse = level+1;
     
     printf("Created coarse grid (%d x %d) for level %d...\n", n_coarse,
@@ -475,7 +499,9 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
       smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
       break;
     case SOR:
+      //printf( "SOR World on rank %d/%d\n", MyRank, NRank );
       smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
+      //printf( "Done SOR World on rank %d/%d\n", MyRank, NRank );
       break;
     default:
       printf( "\n   !!! Error !!!\n" );
@@ -483,11 +509,9 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
       exit(1);
       break;
   }
+
   
-  //! If we are not on the coarsest mesh, continue the downstroke of
-  //! the multigrid cycle in a recursive manner.
-  
-  if (level < n_levels-1) {
+    if (level < n_levels-1) {
     
     //! Restrict the fine solution down onto the coarser grid by
     //! computing the forcing term, i.e., f_coarse = restrict(residual_fine)
@@ -500,18 +524,17 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
     int level_coarse = level + 1;
     
     //! Call the recursive multigrid cycle method on the next coarse level
-   
+    
     multigrid_cycle(phi, f, aux, n_coarse, n_sweeps, n_levels, level_coarse);
     
     //! Prolongate the solution for moving up to finer mesh levels,
     //! i.e., phi_fine = phi_fine + prolong(phi_coarse)
-  
+    
     prolongate_weighted(phi, aux, n_nodes, level);
     
+  
+
   }
-  
-  //! Post-smooth the solution with a number of sweeps before exit
-  
   switch (SMOOTHER) {
     case JACOBI:
       smooth_jacobi(phi[level], f[level], aux[level], n_nodes, n_sweeps);
@@ -528,69 +551,15 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
       exit(1);
       break;
   }
+
+  
   
 }
 
-void smooth_jacobi(double **phi, double **f, double **aux,
-                   int n_nodes, int n_sweeps) {
-  
-  //! Smooth the system using a prescribed number of Jacobi sweeps.
-  //! The Jacobi method uses old solution data with each sweep.
-  //! Compute the uniform spacing squared in the mesh first.
-  
-  double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
-  
-  for (int iter = 0; iter < n_sweeps; iter++) {
-    
-    //! Compute the Jacobi update at each point
-    
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
-        aux[i][j] = (phi[i][j-1] + phi[i-1][j] +
-                     phi[i+1][j] + phi[i][j+1] + h2*f[i][j])/4.0;
-      }
-    }
-    
-    //! Store solution update for this sweep
-    
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
-        phi[i][j] = aux[i][j];
-      }
-    }
-    
-  }
-  
-}
-
-void smooth_gauss_seidel(double **phi, double **f, double **aux,
-                         int n_nodes, int n_sweeps) {
-  
-  //! Smooth the system using a prescribed number of Gauss-Seidel sweeps.
-  //! Due to the use of a 5-point finite difference stencil (2nd-order),
-  //! the resulting Ax = b system has a banded structure. The update to
-  //! phi below reflects the fact that we need data from our nearest i +/- 1,
-  //! and j +/- 1 neighbors. The Gauss-Seidel sweep uses the most recent
-  //! data for each update, i.e., the values from the lower triangular
-  //! portion of the matrix will contain updated data: phi(i,j-1), phi(i-1,j).
-  //! Compute the uniform spacing squared in the mesh first.
-  
-  double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
-  
-  for (int iter = 0; iter < n_sweeps; iter++) {
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
-        phi[i][j] = (phi[i][j-1] + phi[i-1][j] +
-                     phi[i+1][j] + phi[i][j+1] + h2*f[i][j])/4.0;
-      }
-    }
-  }
-  
-}
 
 void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
                 int n_sweeps) {
-  
+//  printf( "smooth World on rank %d/%d\n", MyRank, NRank );
   //! Smooth the system using a prescribed number of SOR sweeps. If the
   //! relaxation factor is set to 1.0, Gauss_Seidel it recovered. For
   //! a relax parameter < 1.0 it is under-relaxation, while if a relax
@@ -600,24 +569,103 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   double relax = RELAX;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
   
+   // prepare the send buffer
+  int SendCount = n_nodes*n_nodes/2;
+  int RecvCount = SendCount;
+  int bcCount=n_nodes;
+  int tag = n_nodes;
+  double RecvBuf[n_nodes/2][n_nodes];
+  double r1_bc[n_nodes];
+  double bc_rev[n_nodes];   
+  int Barrier=MyRank, Btag=172365,brecv;
+  int TargetRank = (MyRank+1)%2;
+   
+  MPI_Barrier(MPI_COMM_WORLD);
 
-  for (int iter = 0; iter < n_sweeps; iter++) {
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
-        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
-                                                     phi[i+1][j] + phi[i][j+1] +
-                                                     h2*f[i][j])/4.0;
-      }
-    }
-  printf(" n_nodes %d \n",n_nodes);
-  for (int i=0;i<n_nodes;i++){
-      for (int j=0;j<n_nodes;j++){
-        printf("%f ",phi[i][j]);
-      }
-      printf("\n");
-    }//print total  
+//   printf("sizeof r1bc : %ld \n", sizeof(r1_bc)/sizeof(r1_bc[0]));
+   //printf("sizeof recv : %ld \n", sizeof(RecvBuf));
 
-}//iter loop
+
+//   printf( "before for rank %d/%d\n", MyRank, NRank );
+  MPI_Scatter( &**phi, SendCount, MPI_DOUBLE,&RecvBuf, RecvCount, MPI_DOUBLE,RootRank, MPI_COMM_WORLD );
+   
+   
+  for (int i=1;i<n_nodes/2-1;i++){
+  for (int j=1;j<(n_nodes-1);j++){
+
+        RecvBuf[i][j] = (1.0 - relax)*RecvBuf[i][j] + relax*(RecvBuf[i][j-1] + RecvBuf[i-1][j] +\
+                         RecvBuf[i+1][j] + RecvBuf[i][j+1] + h2*f[i][j])/4.0;
+        //printf( "  %f", RecvBuf[i][j] );
+    }//j node
+        //printf( "\n" );   
+  }// i node
+  
+ 
+
+//  printf( "before 687 rank %d/%d\n", MyRank, NRank );
+  if (MyRank == RootRank){
+     // printf("error0?");
+       MPI_Recv(&bc_rev,n_nodes,MPI_DOUBLE,TargetRank,tag,MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+       int t=n_nodes/2-1;
+       for (int j=1;j<(n_nodes-1);j++){
+         
+         RecvBuf[t][j] = (1.0 - relax)*RecvBuf[t][j] + relax*(RecvBuf[t][j-1] + RecvBuf[t-1][j] +\
+                          bc_rev[j] + RecvBuf[t][j+1] + h2*f[t][j])/4.0;
+       }
+       for (int i=0;i<n_nodes;i++){ r1_bc[i]=RecvBuf[t][i]; }
+       MPI_Ssend(&r1_bc,n_nodes,MPI_DOUBLE,TargetRank,tag,MPI_COMM_WORLD);
+  
+   }
+
+   else {
+      for (int i=0;i<n_nodes;i++){r1_bc[i]=RecvBuf[0][i];}
+       
+       MPI_Send(&r1_bc,n_nodes,MPI_DOUBLE,TargetRank,tag,MPI_COMM_WORLD);
+       MPI_Recv(&bc_rev,n_nodes,MPI_DOUBLE,TargetRank,tag,MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+       for (int j=1;j<(n_nodes-1);j++){
+        RecvBuf[0][j] = (1.0 - relax)*RecvBuf[0][j] + relax*(RecvBuf[0][j-1] +bc_rev[j] +\
+                          RecvBuf[0+1][j] + RecvBuf[0][j+1] +h2*f[0][j])/4.0;
+
+       }
+      // printf("error1?");
+    //MPI_Recv( &brecv, 1, MPI_INT, TargetRank, Btag, MPI_COMM_WORLD, MPI_STATUS_IGNORE );   
+  }  // second rank else 
+
+int MPI_Barrier(MPI_Comm comm);
+MPI_Gather( &RecvBuf, SendCount, MPI_DOUBLE, &**phi, RecvCount,MPI_DOUBLE,RootRank,MPI_COMM_WORLD );
+
+  //for (int iter = 0; iter < n_sweeps; iter++) {
+
+if (MyRank!=RootRank){
+  printf("nodes=%d recv rank = %d\n",n_nodes,MyRank); 
+   for (int i=0; i<n_nodes/2; i++) {
+            for (int j=0; j<n_nodes; j++) {
+               printf( "  %f", RecvBuf[i][j] );
+            }
+            printf( "\n" );
+   }
+}  
+else {
+  printf("nodes=%d recv rank = %d\n",n_nodes,MyRank); 
+   for (int i=0; i<n_nodes/2; i++) {
+            for (int j=0; j<n_nodes; j++) {
+               printf( "  %f", RecvBuf[i][j] );
+            }
+            printf( "\n" );
+   }
+
+  printf("nodes=%d gather\n",n_nodes); 
+   for (int i=0; i<n_nodes; i++) {
+            for (int j=0; j<n_nodes; j++) {
+               printf( "  %f", phi[i][j] );
+            }
+            printf( "\n" );
+   }
+
+ }
+//printf( "before barrier rank %d/%d\n", MyRank, NRank );
+
+//}//iter loop
 }//function
 
 void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
@@ -631,7 +679,7 @@ void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
   
   //! Compute some information about the coarse level
   
-  int n_coarse     = (n_nodes-1)/(2) + 1;
+  int n_coarse     = (n_nodes)/(2) ;
   int level_coarse = level+1;
   int i_fine, j_fine;
   
@@ -684,7 +732,7 @@ void prolongate_weighted(double ***phi, double ***aux, int n_nodes,
   
   //! Compute some information about the coarse level
   
-  int n_coarse     = (n_nodes-1)/(2) + 1;
+  int n_coarse     = (n_nodes)/(2) ;
   int level_coarse = level+1;
   int i_fine, j_fine;
   
@@ -882,7 +930,7 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
                        int n_levels) {
   
   //! Deallocation of all dynamic memory in the program.
-  
+  printf("start j dimension");
   int nodes = n_nodes;
   for (int i_level = 0; i_level < n_levels; i_level++) {
     
@@ -891,7 +939,7 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
     for (int i = 0; i < nodes; i++) {
       delete [] x[i_level][i];
       delete [] y[i_level][i];
-      delete [] phi[i_level][i];
+      //delete [] phi[i_level][i];
       delete [] aux[i_level][i];
       delete [] f[i_level][i];
       if (i_level == 0) delete [] phi_exact[i];
@@ -901,14 +949,14 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
     
     delete [] x[i_level];
     delete [] y[i_level];
-    delete [] phi[i_level];
+    //delete [] phi[i_level];
     delete [] aux[i_level];
     delete [] f[i_level];
     if (i_level == 0) delete [] phi_exact;
     
     //! Compute number of nodes on the next coarse level
     
-    nodes = (nodes-1)/2 + 1;
+    nodes = (nodes)/2 ;
     
   }
   
@@ -916,7 +964,7 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
   
   delete [] x;
   delete [] y;
-  delete [] phi;
+  //delete [] phi;
   delete [] aux;
   delete [] f;
   
