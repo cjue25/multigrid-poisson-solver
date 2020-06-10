@@ -61,7 +61,7 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-int w_array[] = {1,3,5,3,1};
+int w_array[] = {2,2};
 int NoA = sizeof(w_array)/sizeof(w_array[0]);
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
@@ -483,7 +483,7 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
          level = 8 - ( base_level - flevel );
          break;
       }
-      if(NoA % 2 == 0 and flevel == base_level - 1 and i + 1 > float(NoA)/2.0){
+      if(NoA % 2 == 0 and flevel == base_level - 1 and i + 1 == float(NoA)/2.0){
          level = n_levels - 2;
          break;
       }
