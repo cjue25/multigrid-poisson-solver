@@ -43,7 +43,7 @@ const int FINE_MESH = 0;
 #define NUM_NODES 17
 
 //! Maximum number of multigrid cycles
-#define MG_CYCLES 10000
+#define MG_CYCLES 1
 
 //! Flag for disabling multigrid (Disable MG = 1, Use MG = 0)
 #define DISABLE_MG 0
@@ -273,7 +273,7 @@ int allocate_arrays(double ****phi, double ***phi_exact, double ****f,
   
   bool coarsen = true; int n_levels = 1; int nodes = n_nodes;
   while (coarsen) {
-    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 3)) {
+    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 5)) {
       nodes = (nodes-1)/2 + 1;
       n_levels++;
     } else {
@@ -609,13 +609,13 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
                                                      h2*f[i][j])/4.0;
       }
     }
-  printf(" n_nodes %d \n",n_nodes);
-  for (int i=0;i<n_nodes;i++){
-      for (int j=0;j<n_nodes;j++){
-        printf("%f ",phi[i][j]);
-      }
-      printf("\n");
-    }//print total  
+  //printf(" n_nodes %d \n",n_nodes);
+  //for (int i=0;i<n_nodes;i++){
+  //    for (int j=0;j<n_nodes;j++){
+  //      printf("%f ",phi[i][j]);
+  //    }
+  //    printf("\n");
+  //  }//print total  
 
 }//iter loop
 }//function
