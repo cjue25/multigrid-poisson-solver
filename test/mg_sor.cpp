@@ -42,7 +42,7 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 257
+#define NUM_NODES 17
 
 //! Maximum number of multigrid cycles
 #define MG_CYCLES 100000
@@ -263,7 +263,7 @@ int allocate_arrays(double ****phi, double ***phi_exact, double ****f,
   
   bool coarsen = true; int n_levels = 1; int nodes = n_nodes;
   while (coarsen) {
-    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 3)) {
+    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 5)) {
       nodes = (nodes-1)/2 + 1;
       n_levels++;
     } else {
