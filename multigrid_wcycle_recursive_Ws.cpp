@@ -38,7 +38,7 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 257
+#define NUM_NODES 17
 
 //! Maximum number of multigrid cycles
 #define MG_CYCLES 20
@@ -63,6 +63,7 @@ const int FINE_MESH = 0;
 
 int w_array[] = {2,2};
 int NoA = sizeof(w_array)/sizeof(w_array[0]);
+
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -477,23 +478,23 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
     int base_level = n_levels;
     int direc = 0;
     int level = 0;
-    for(int i = 0 ; i < float(NoA) / 2.0 ; i++){
+    for(int i = 0 ; i - 1 < float(NoA) / 2.0 ; i++){
       if (flevel < base_level - 1){
          direc = 1;
-         level = 8 - ( base_level - flevel );
+         level = n_levels - ( base_level - flevel );
          break;
       }
-      if(NoA % 2 == 0 and flevel == base_level - 1 and i + 1 == float(NoA)/2.0){
-         level = n_levels - 2;
+      if(NoA % 2 == 0 and flevel == base_level - 1 and i  == NoA/2.0){
+         level = n_levels - ( base_level - flevel );
          break;
       }
       if (flevel < base_level + w_array[i] - 1){
          direc = -1;
-         level = 6 - (flevel - base_level);
+         level = (n_levels-2) - (flevel - base_level);
          break;
       }
       if(NoA % 2 == 1 and flevel == base_level +  w_array[i] - 1 and i + 1 > float(NoA)/2.0){
-         level = 6 - (flevel - base_level);
+         level = (n_levels-2) - (flevel - base_level);
          break;
       }
       base_level += 2 * w_array[i];
