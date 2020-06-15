@@ -61,7 +61,7 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-int w_array[] = {2,2};
+int w_array[] = {2,2,2};
 int NoA = sizeof(w_array)/sizeof(w_array[0]);
 
 /******************************************************************************/

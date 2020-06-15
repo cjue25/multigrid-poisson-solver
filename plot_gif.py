@@ -23,7 +23,7 @@ for i in range(1,len(path)+1):
     data=d.values
 
     ttl = plt.text(0.5, 1.01, 'iter= '+str(i), horizontalalignment='center', verticalalignment='bottom', transform=ax.transAxes)
-    im=plt.imshow(np.fliplr(data),cmap='jet',vmin=-0.15, vmax=0, aspect='equal') #vmin vmax
+    im=plt.imshow(data,cmap='jet',vmin=-0.15, vmax=0, aspect='equal') #vmin vmax
 
     ims.append([im,ttl])
 
@@ -36,7 +36,7 @@ fig2,ax2=plt.subplots(ncols=1,nrows=1)
 s=N*3;
 d=e.iloc[s:s+N,0:N]
 data=d.values
-cim=ax2.imshow(np.fliplr(data),cmap='jet' ,vmin=-0.15, vmax=0,aspect='equal');
+cim=ax2.imshow(data,cmap='jet' ,vmin=-0.15, vmax=0,aspect='equal');
 ax2.set_title('analytical solution');
 fig2.colorbar(cim)
 fig2.savefig('./figure/analytical_sol.png');

@@ -38,7 +38,7 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 257
+#define NUM_NODES 17
 
 //! Maximum number of multigrid cycles
 #define MG_CYCLES 20
