@@ -69,7 +69,7 @@ const int FINE_MESH = 0;
 
 //#define OMP
 
-#define RELAX 1.6
+#define RELAX 1.7
 
 //#define thread 8 
 /******************************************************************************/
@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
   //! Print final message to console
   
   if (stop_calc) {
-    printf("\nConverged %3.1f orders of magnitude...\n", tolerance);
+    //printf("\nConverged %3.1f orders of magnitude...\n", tolerance);
     printf("#============================================#\n\n");
   } else printf("\n#============================================#\n\n");
   
@@ -599,51 +599,20 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   //! parameter > 1.0 is chosen, it is over-relaxation.
   //! Set the relaxation parameter and compute the mesh spacing.
   
-  double relax = RELAX;
+  double relax = 1.1;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
   
-  int mv_node;
-  
   for (int iter = 0; iter < n_sweeps; iter++) {
-#ifdef OMP
-# pragma omp parallel num_threads (thread)
-//printf("OpenMp ing......");
-{  
-# 	pragma omp for 
-#endif    
-
-	// odd	
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=1;}
-      else if (i%2==0){mv_node=2;}
-
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
+    for (int i = 1; i < n_nodes-1; i++) {
+      for (int j = 1; j < n_nodes-1; j++) {
         phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
                                                      phi[i+1][j] + phi[i][j+1] +
                                                      h2*f[i][j])/4.0;
-
       }
     }
-#ifdef OMP
-#	pragma omp for
-#endif
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=2;}
-      else if (i%2==0){mv_node=1;}
-
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
-        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
-                                                     phi[i+1][j] + phi[i][j+1] +
-                                                     h2*f[i][j])/4.0;
-
-      }
-    }
-
-#ifdef OMP 
-}//prama thread
-#endif  
-}//iter loop
-}//function
+  }
+  
+}
 
 void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
                        int level) {
