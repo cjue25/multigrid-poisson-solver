@@ -477,7 +477,8 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
       level       += 1 ;
       n_nodes     = (n_nodes-1)/(2) + 1;
     }
-//    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
   }
   for(int i = 0; i < n_levels-1; i++){
     level       -= 1 ;
