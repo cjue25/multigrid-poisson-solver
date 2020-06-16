@@ -69,7 +69,7 @@ const int FINE_MESH = 0;
 
 //#define OMP
 
-#define RELAX 1.6
+#define RELAX 1.3
 
 //#define thread 8 
 /******************************************************************************/
@@ -599,7 +599,7 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   //! parameter > 1.0 is chosen, it is over-relaxation.
   //! Set the relaxation parameter and compute the mesh spacing.
   
-  double relax = 1.1;
+  double relax = RELAX;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
   
   for (int iter = 0; iter < n_sweeps; iter++) {
