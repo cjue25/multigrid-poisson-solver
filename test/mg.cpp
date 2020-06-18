@@ -42,7 +42,7 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 17
+#define NUM_NODES 129
 
 //! Maximum number of multigrid cycles
 #define MG_CYCLES 10000
@@ -69,7 +69,7 @@ const int FINE_MESH = 0;
 
 //#define OMP
 
-#define RELAX 1.1
+#define RELAX 1.2
 
 //#define thread 8 
 /******************************************************************************/
@@ -488,7 +488,7 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
   
   //! If we are not on the coarsest mesh, continue the downstroke of
   //! the multigrid cycle in a recursive manner.
-  
+  //if (level < 2){
   if (level < n_levels-1) {
     
     //! Restrict the fine solution down onto the coarser grid by

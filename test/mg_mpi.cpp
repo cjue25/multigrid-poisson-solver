@@ -67,7 +67,7 @@ const int FINE_MESH = 0;
 
 //#define OMP
 
-#define RELAX 1.7
+#define RELAX 1.2
 
 //#define thread 8 
 /******************************************************************************/
@@ -198,7 +198,7 @@ int main(int argc, char* argv[]) {
                y[FINE_MESH], n_nodes, i_mgcycles, residual_0, visualize);
   }
   //! Main solver loop over the prescribed number of multigrid cycles
-
+  printf("here rank=%d",MyRank);
   for (i_mgcycles = 1; i_mgcycles <= n_mgcycles; i_mgcycles++) {
 
     //! Call the recursive multigrid cycle method
@@ -481,6 +481,7 @@ void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
       smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
       break;
     case SOR:
+      
       smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
       break;
     default:

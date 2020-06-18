@@ -67,7 +67,7 @@ const int FINE_MESH = 0;
 
 #define pow_tol -10.0
 
-#define RELAX 1.7
+#define RELAX 1.2
 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */

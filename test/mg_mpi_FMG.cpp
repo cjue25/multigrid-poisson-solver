@@ -67,11 +67,11 @@ const int FINE_MESH = 0;
 
 //#define OMP
 
-#define RELAX 1.7
+#define RELAX 1.2
 
 //#define thread 8 
-int w_array[] = {2,2,2};
-int NoA = sizeof(w_array)/sizeof(w_array[0]);
+//int w_array[] = {2,2,2};
+//int NoA = sizeof(w_array)/sizeof(w_array[0]);
 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */

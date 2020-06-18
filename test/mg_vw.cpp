@@ -34,7 +34,7 @@ enum SMOOTHER_T {
 //! Definition of the finest grid level for code readability.
 const int FINE_MESH = 0;
 
-
+int NoA = 3;
 /******************************************************************************/
 /* Set the variable parameters for the simulation here. Note that             */
 /* the number of nodes and levels of multigrid can also be set                */
@@ -42,7 +42,7 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 257
+#define NUM_NODES 2049
 
 //! Maximum number of multigrid cycles
 #define MG_CYCLES 10000
@@ -57,7 +57,7 @@ const int FINE_MESH = 0;
 #define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 1
+#define VISUALIZE 0
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1
@@ -67,14 +67,11 @@ const int FINE_MESH = 0;
 
 #define pow_tol -10
 
-#define OMP
+//#define OMP
 
 #define RELAX 1.2
 
-#define thread 7
-
-int w_array[] = {2,2,2};
-int NoA = sizeof(w_array)/sizeof(w_array[0]);
+//#define thread 8 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -101,7 +98,7 @@ void intitialize_solution(double **phi, double **phi_exact, double **f,
 
 //! Recursive function for completing a multigrid V-cycle
 void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
-                     int n_sweeps, int n_levels, int level);
+                     int n_sweeps, int n_levels, int level, int *w_array);
 
 //! Smooth the linear system using the Jacobi method
 void smooth_jacobi(double **phi, double **f, double **aux,
@@ -138,8 +135,7 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
                        double ***x, double ***y, double ***aux, int n_nodes,
                        int n_levels);
 
-void smooth_total(double ***phi, double ***f, double ***aux,
-                int n_nodes, int n_sweeps, int level);
+
 /******************************************************************************/
 /* Main function driving the high-level solver execution.                     */
 /******************************************************************************/
@@ -162,7 +158,9 @@ int main(int argc, char* argv[]) {
   //! Pointers to arrays that we need throughout the solver
   
   double ***phi, **phi_exact, ***f, ***x, ***y, ***aux;
-  
+  int mid_level=int((log2(n_nodes-1)-1)/2);
+  int w_array[] = {1,mid_level,1};
+
   //! Allocate memory for the grid and solution arrays
   
   n_levels = allocate_arrays(&phi, &phi_exact, &f, &x, &y, &aux, n_nodes);
@@ -205,7 +203,7 @@ int main(int argc, char* argv[]) {
     
     //! Call the recursive multigrid cycle method
     
-    multigrid_cycle(phi, f, aux, n_nodes, n_sweeps, n_levels, FINE_MESH);
+    multigrid_cycle(phi, f, aux, n_nodes, n_sweeps, n_levels, FINE_MESH, w_array);
     
     //! Check the solution residual and for convergence on the fine mesh
     
@@ -279,7 +277,7 @@ int allocate_arrays(double ****phi, double ***phi_exact, double ****f,
   
   bool coarsen = true; int n_levels = 1; int nodes = n_nodes;
   while (coarsen) {
-    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 3)) {
+    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 5)) {
       nodes = (nodes-1)/2 + 1;
       n_levels++;
     } else {
@@ -470,7 +468,6 @@ void intitialize_solution(double **phi, double **phi_exact, double **f,
 
 void smooth_total(double ***phi, double ***f, double ***aux,
                   int n_nodes, int n_sweeps, int level) {
-  //printf("%i\n",level);
   switch (SMOOTHER) {
     case JACOBI:
       smooth_jacobi(phi[level], f[level], aux[level], n_nodes, n_sweeps);
@@ -488,40 +485,62 @@ void smooth_total(double ***phi, double ***f, double ***aux,
       break;
   }
 }
+void up_down(double ***phi, double ***f, double ***aux, int n_nodes,int level,
+                     int n_sweeps, int n_levels, int flevel, int *w_array){
+  restrict_weighted(phi, f, aux, n_nodes, level);
+  int n_coarse     = (n_nodes-1)/(2) + 1;
+  int level_coarse = flevel + 1;
+  multigrid_cycle(phi, f, aux, n_coarse, n_sweeps, n_levels, level_coarse, w_array);
+  prolongate_weighted(phi, aux, n_nodes, level);
+}
+
+void down_up(double ***phi, double ***f, double ***aux, int n_nodes,int level,
+                     int n_sweeps, int n_levels, int flevel, int *w_array){
+  int plevel        = level - 1;
+  int pn_nodes      = 2*(n_nodes-1) + 1;
+  prolongate_weighted(phi, aux, pn_nodes, plevel);
+  int n_coarse      = 2*(n_nodes-1)+1;
+  int level_coarse  = flevel + 1;
+  multigrid_cycle(phi, f, aux, n_coarse, n_sweeps, n_levels, level_coarse, w_array);
+  restrict_weighted(phi, f, aux, pn_nodes, plevel);
+}
 
 void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
-                     int n_sweeps, int n_levels, int level) {
-  for (int i = 0; i < n_levels-1; i++) {
-    restrict_weighted(phi, f, aux, n_nodes, level);
-    level       += 1 ;
-    n_nodes     = (n_nodes-1)/(2) + 1;
-  }
-
-  smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-
-  for(int l = 1; l < n_levels; l++){
-    for(int i = 0; i < l; i++){
-      level       -= 1 ;
-      n_nodes     = (n_nodes-1)*(2) + 1;
-      prolongate_weighted(phi, aux, n_nodes, level);
-      smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+                     int n_sweeps, int n_levels, int flevel, int *w_array) {
+    int base_level = n_levels;
+    int direc = 0;
+    int level = 0;
+    for(int i = 0 ; i - 1 < float(NoA) / 2.0 ; i++){
+      if (flevel < base_level - 1){
+         direc = 1;
+         level = n_levels - ( base_level - flevel );
+         break;
+      }
+      if(NoA % 2 == 0 and flevel == base_level - 1 and i  == NoA/2.0){
+         level = n_levels - ( base_level - flevel );
+         break;
+      }
+      if (flevel < base_level + w_array[i] - 1){
+         direc = -1;
+         level = (n_levels-2) - (flevel - base_level);
+         break;
+      }
+      if(NoA % 2 == 1 and flevel == base_level +  w_array[i] - 1 and i + 1 > float(NoA)/2.0){
+         level = (n_levels-2) - (flevel - base_level);
+         break;
+      }
+      base_level += 2 * w_array[i];
     }
-//    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-    for (int i = 0; i < l; i++) {
-      smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-      restrict_weighted(phi, f, aux, n_nodes, level);
-      level       += 1 ;
-      n_nodes     = (n_nodes-1)/(2) + 1;
+//    printf("%i\n",level);
+    smooth_total(phi,f,aux,n_nodes,n_sweeps,level);
+    if (direc == 1) {
+      up_down(phi,f,aux,n_nodes,level,n_sweeps,n_levels,flevel,w_array);
     }
-    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-  }
-  for(int i = 0; i < n_levels-1; i++){
-    level       -= 1 ;
-    n_nodes     = (n_nodes-1)*(2) + 1;
-    prolongate_weighted(phi, aux, n_nodes, level);
-    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-  }
+    if (direc == -1){
+      down_up(phi,f,aux,n_nodes,level,n_sweeps,n_levels,flevel,w_array);
+    }
+//    printf("%i\n",level);
+    smooth_total(phi,f,aux,n_nodes,n_sweeps,level);
 }
 
 void smooth_jacobi(double **phi, double **f, double **aux,
@@ -593,48 +612,17 @@ void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
   double relax = RELAX;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
   
-  int mv_node;
-  
   for (int iter = 0; iter < n_sweeps; iter++) {
-#ifdef OMP
-# pragma omp parallel num_threads (thread)
-//printf("OpenMp ing......");
-{  
-# 	pragma omp for 
-#endif    
-
-	// odd	
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=1;}
-      else if (i%2==0){mv_node=2;}
-
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
+    for (int i = 1; i < n_nodes-1; i++) {
+      for (int j = 1; j < n_nodes-1; j++) {
         phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
                                                      phi[i+1][j] + phi[i][j+1] +
                                                      h2*f[i][j])/4.0;
-
       }
     }
-#ifdef OMP
-#	pragma omp for
-#endif
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=2;}
-      else if (i%2==0){mv_node=1;}
-
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
-        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
-                                                     phi[i+1][j] + phi[i][j+1] +
-                                                     h2*f[i][j])/4.0;
-
-      }
-    }
-
-#ifdef OMP 
-}//prama thread
-#endif  
-}//iter loop
-}//function
+  }
+  
+}
 
 void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
                        int level) {

@@ -69,7 +69,7 @@ const int FINE_MESH = 0;
 
 //#define OMP
 
-#define RELAX 1.1
+#define RELAX 1.2
 
 //#define thread 8 
 /******************************************************************************/

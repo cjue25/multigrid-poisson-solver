@@ -67,11 +67,11 @@ const int FINE_MESH = 0;
 
 //#define OMP
 
-#define RELAX 1.7
+#define RELAX 1.2
 
 //#define thread 8 
-int w_array[] = {2,2,2};
-int NoA = sizeof(w_array)/sizeof(w_array[0]);
+//int w_array[] = {2,2,2};
+int NoA = 3;
 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
@@ -162,7 +162,8 @@ int main(int argc, char* argv[]) {
   //! Pointers to arrays that we need throughout the solver
   
   double ***phi, **phi_exact, ***f, ***x, ***y, ***aux;
-  
+  int mid_level=int((log2(n_nodes-1)-1)/2);
+  int w_array[] = {1,mid_level,1};
   //! Allocate memory for the grid and solution arrays
   
   n_levels = allocate_arrays(&phi, &phi_exact, &f, &x, &y, &aux, n_nodes);

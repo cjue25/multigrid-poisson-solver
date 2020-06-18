@@ -42,22 +42,22 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 257
+#define NUM_NODES 17
 
 //! Maximum number of multigrid cycles
-#define MG_CYCLES 10000
+#define MG_CYCLES 100000
 
 //! Flag for disabling multigrid (Disable MG = 1, Use MG = 0)
-#define DISABLE_MG 0
+#define DISABLE_MG 1
 
 //! Number of smoothing sweeps at each stage of the multigrid
-#define NUM_SWEEP 3
+#define NUM_SWEEP 1
 
 //! Choice of iterative smoother (see SMOOTHER_T above)
 #define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 1
+#define VISUALIZE 0
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1
@@ -65,16 +65,10 @@ const int FINE_MESH = 0;
 //! Convergence criteria in terms of orders reduction in the L2 norm
 #define TOLERANCE 12.0
 
-#define pow_tol -10
-
-#define OMP
+#define pow_tol -10.0
 
 #define RELAX 1.2
 
-#define thread 7
-
-int w_array[] = {2,2,2};
-int NoA = sizeof(w_array)/sizeof(w_array[0]);
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
@@ -112,8 +106,7 @@ void smooth_gauss_seidel(double **phi, double **f, double **aux,
                          int n_nodes, int n_sweeps);
 
 //! Smooth the linear system using the SOR method
-void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
-                int n_sweeps);
+double smooth_sor(double **phi, double **f,double **residual, int n_nodes, int n_sweeps);
 
 //! Weighted restriction of the residual from a fine mesh to a coarser level
 void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
@@ -138,8 +131,7 @@ void deallocate_arrays(double ***phi, double **phi_exact, double ***f,
                        double ***x, double ***y, double ***aux, int n_nodes,
                        int n_levels);
 
-void smooth_total(double ***phi, double ***f, double ***aux,
-                int n_nodes, int n_sweeps, int level);
+
 /******************************************************************************/
 /* Main function driving the high-level solver execution.                     */
 /******************************************************************************/
@@ -181,42 +173,34 @@ int main(int argc, char* argv[]) {
   
   generate_fine_mesh(x[FINE_MESH], y[FINE_MESH], n_nodes, visualize);
   
-  //! Create the coarse multigrid levels in a recursive fashion
-  
-  coarsen_mesh(x, y, n_nodes, n_levels, FINE_MESH, visualize);
   
   //! Initialize the approximate and exact solutions on all mesh levels
   
   intitialize_solution(phi[FINE_MESH], phi_exact, f[FINE_MESH],
                        x[FINE_MESH], y[FINE_MESH], n_nodes);
   
-  //! Compute the initial value of the residual before any smoothing
-  
-  residual_0 = compute_residual(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH],
-                                n_nodes);
-  
+  residual_0 = smooth_sor(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH], n_nodes, n_sweeps);
+
+
   //! Write the initial residual and solution files if requested
   write_output(phi[FINE_MESH], phi_exact, x[FINE_MESH],
                y[FINE_MESH], n_nodes, i_mgcycles, residual_0, visualize);
-  
+
+
+
   //! Main solver loop over the prescribed number of multigrid cycles
   
   for (i_mgcycles = 1; i_mgcycles <= n_mgcycles; i_mgcycles++) {
     
-    //! Call the recursive multigrid cycle method
-    
-    multigrid_cycle(phi, f, aux, n_nodes, n_sweeps, n_levels, FINE_MESH);
-    
+       
     //! Check the solution residual and for convergence on the fine mesh
+   residual = smooth_sor(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH], n_nodes, n_sweeps);
     
-    residual = compute_residual(phi[FINE_MESH], f[FINE_MESH], aux[FINE_MESH],
-                                n_nodes);
-                                
-   
-    
-   // if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
-   if (abs(residual-residual_old) < pow(10,pow_tol)) stop_calc = true;
+   // if (residual < pow(10,pow_tol)) stop_calc = true;
+    //if (log10(residual_0)-log10(residual) > tolerance) stop_calc = true;
+    if (abs(residual-residual_old) < pow(10,pow_tol)) stop_calc = true;
    residual_old=residual;
+   
    // printf("r0:%f - r:%f - tol %f",log10(residual_0),log10(residual),tolerance);
     //! Depending on the cycle number, write a solution file if requested
     
@@ -279,7 +263,7 @@ int allocate_arrays(double ****phi, double ***phi_exact, double ****f,
   
   bool coarsen = true; int n_levels = 1; int nodes = n_nodes;
   while (coarsen) {
-    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 3)) {
+    if (((nodes-1)%2 == 0) && ((nodes-1)/2 + 1 >= 5)) {
       nodes = (nodes-1)/2 + 1;
       n_levels++;
     } else {
@@ -368,57 +352,7 @@ void generate_fine_mesh(double **x, double **y, int n_nodes, bool visualize) {
   
 }
 
-void coarsen_mesh(double ***x, double ***y, int n_nodes,
-                  int n_levels, int level, bool visualize) {
-  
-  //! Create coarse MG levels by keeping every other node in
-  //! the fine mesh. Note that this is a recursive function.
-  
-  if (level == n_levels-1) {
-    
-    //! Do nothing. We have reached the coarsest level.
-    
-    if (n_levels == 1) printf("No multigrid...\n");
-    
-    return;
-    
-  } else {
-    
-    //! Coarsen the current level
-    
-    for (int i = 0; i < n_nodes; i++) {
-      for (int j = 0; j < n_nodes; j++) {
-        
-        //! Store the node coordinates at every other fine mesh point
-        //! in the coarser mesh using the halved coarse mesh indices.
-        
-        if ((i%2 == 0) && (j%2 == 0)) {
-          x[level+1][i/2][j/2] = x[level][i][j];
-          y[level+1][i/2][j/2] = y[level][i][j];
-        }
-        
-      }
-    }
-    
-    //! Set up the new index values and increment the mesh level
-    
-    int n_coarse      = (n_nodes-1)/(2) + 1;
-    int levels_coarse = level+1;
-    
-    printf("Created coarse grid (%d x %d) for level %d...\n", n_coarse,
-           n_coarse, levels_coarse);
-    
-    //! Plot the mesh if requested (can help debug the multigrid)
-    
-    if (visualize) write_mesh(x[level+1], y[level+1], n_coarse, levels_coarse);
-    
-    //! Call the function again to coarsen the next level recursively.
-    
-    coarsen_mesh(x, y, n_coarse, n_levels, levels_coarse, visualize);
-    
-  }
-  
-}
+
 
 void intitialize_solution(double **phi, double **phi_exact, double **f,
                           double **x, double **y, int n_nodes) {
@@ -468,289 +402,42 @@ void intitialize_solution(double **phi, double **phi_exact, double **f,
   
 }
 
-void smooth_total(double ***phi, double ***f, double ***aux,
-                  int n_nodes, int n_sweeps, int level) {
-  //printf("%i\n",level);
-  switch (SMOOTHER) {
-    case JACOBI:
-      smooth_jacobi(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    case GAUSS_SEIDEL:
-      smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    case SOR:
-      smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    default:
-      printf( "\n   !!! Error !!!\n" );
-      printf( " Unrecognized smoother. \n\n");
-      exit(1);
-      break;
-  }
-}
 
-void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
-                     int n_sweeps, int n_levels, int level) {
-  for (int i = 0; i < n_levels-1; i++) {
-    restrict_weighted(phi, f, aux, n_nodes, level);
-    level       += 1 ;
-    n_nodes     = (n_nodes-1)/(2) + 1;
-  }
-
-  smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-
-  for(int l = 1; l < n_levels; l++){
-    for(int i = 0; i < l; i++){
-      level       -= 1 ;
-      n_nodes     = (n_nodes-1)*(2) + 1;
-      prolongate_weighted(phi, aux, n_nodes, level);
-      smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-    }
-//    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-    for (int i = 0; i < l; i++) {
-      smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-      restrict_weighted(phi, f, aux, n_nodes, level);
-      level       += 1 ;
-      n_nodes     = (n_nodes-1)/(2) + 1;
-    }
-    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-  }
-  for(int i = 0; i < n_levels-1; i++){
-    level       -= 1 ;
-    n_nodes     = (n_nodes-1)*(2) + 1;
-    prolongate_weighted(phi, aux, n_nodes, level);
-    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
-  }
-}
-
-void smooth_jacobi(double **phi, double **f, double **aux,
-                   int n_nodes, int n_sweeps) {
-  
-  //! Smooth the system using a prescribed number of Jacobi sweeps.
-  //! The Jacobi method uses old solution data with each sweep.
-  //! Compute the uniform spacing squared in the mesh first.
-  
+double smooth_sor(double **phi, double **f,double **residual, int n_nodes, int n_sweeps) {
+   
+  double norm = 0.0;
   double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
-  
-  for (int iter = 0; iter < n_sweeps; iter++) {
-    
-    //! Compute the Jacobi update at each point
-    
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
-        aux[i][j] = (phi[i][j-1] + phi[i-1][j] +
-                     phi[i+1][j] + phi[i][j+1] + h2*f[i][j])/4.0;
-      }
-    }
-    
-    //! Store solution update for this sweep
-    
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
-        phi[i][j] = aux[i][j];
-      }
-    }
-    
-  }
-  
-}
-
-void smooth_gauss_seidel(double **phi, double **f, double **aux,
-                         int n_nodes, int n_sweeps) {
-  
-  //! Smooth the system using a prescribed number of Gauss-Seidel sweeps.
-  //! Due to the use of a 5-point finite difference stencil (2nd-order),
-  //! the resulting Ax = b system has a banded structure. The update to
-  //! phi below reflects the fact that we need data from our nearest i +/- 1,
-  //! and j +/- 1 neighbors. The Gauss-Seidel sweep uses the most recent
-  //! data for each update, i.e., the values from the lower triangular
-  //! portion of the matrix will contain updated data: phi(i,j-1), phi(i-1,j).
-  //! Compute the uniform spacing squared in the mesh first.
-  
-  double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
-  
-  for (int iter = 0; iter < n_sweeps; iter++) {
-    for (int i = 1; i < n_nodes-1; i++) {
-      for (int j = 1; j < n_nodes-1; j++) {
-        phi[i][j] = (phi[i][j-1] + phi[i-1][j] +
-                     phi[i+1][j] + phi[i][j+1] + h2*f[i][j])/4.0;
-      }
-    }
-  }
-  
-}
-
-void smooth_sor(double **phi, double **f, double **aux, int n_nodes,
-                int n_sweeps) {
-  
-  //! Smooth the system using a prescribed number of SOR sweeps. If the
-  //! relaxation factor is set to 1.0, Gauss_Seidel it recovered. For
-  //! a relax parameter < 1.0 it is under-relaxation, while if a relax
-  //! parameter > 1.0 is chosen, it is over-relaxation.
-  //! Set the relaxation parameter and compute the mesh spacing.
-  
   double relax = RELAX;
-  double h2 = pow(1.0/((double)n_nodes-1.0),2.0);
-  
   int mv_node;
+
+
   
-  for (int iter = 0; iter < n_sweeps; iter++) {
-#ifdef OMP
-# pragma omp parallel num_threads (thread)
-//printf("OpenMp ing......");
-{  
-# 	pragma omp for 
-#endif    
 
-	// odd	
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=1;}
-      else if (i%2==0){mv_node=2;}
-
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
+	for (int iter = 0; iter < n_sweeps; iter++) {
+    for (int i = 1; i < n_nodes-1; i++) {
+      for (int j = 1; j < n_nodes-1; j++) {
         phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
                                                      phi[i+1][j] + phi[i][j+1] +
                                                      h2*f[i][j])/4.0;
-
       }
     }
-#ifdef OMP
-#	pragma omp for
-#endif
-      for (int i = 1; i < n_nodes-1; i++) {
-      if (i%2!=0){mv_node=2;}
-      else if (i%2==0){mv_node=1;}
+  }//iter loop
 
-      for (int j = mv_node; j < n_nodes-1; j+=2) {
-        phi[i][j] = (1.0 - relax)*phi[i][j] + relax*(phi[i][j-1] + phi[i-1][j] +
-                                                     phi[i+1][j] + phi[i][j+1] +
-                                                     h2*f[i][j])/4.0;
 
+
+  for (int i=1;i<(n_nodes-1);i++){
+      for (int j=1;j<(n_nodes-1);j++){
+      residual[i][j] = f[i][j] + (phi[i][j-1] + phi[i-1][j] +
+                                phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j])/h2;
+       norm += residual[i][j]*residual[i][j];                         
+	//norm+=abs(residual[i][j]/phi[i][j])/pow(n_nodes-1,2);		    
       }
-    }
-
-#ifdef OMP 
-}//prama thread
-#endif  
-}//iter loop
+      }
+      norm = sqrt(norm);
+      return norm;
 }//function
 
-void restrict_weighted(double ***phi, double ***f, double ***aux, int n_nodes,
-                       int level) {
-  
-  //! Restrict the solution, i.e., transfer it from a fine to coarse level.
-  //! First, we need to compute the residual on the fine level, as this is
-  //! what we are restricting onto the coarse mesh.
-  
-  compute_residual(phi[level], f[level], aux[level], n_nodes);
-  
-  //! Compute some information about the coarse level
-  
-  int n_coarse     = (n_nodes-1)/(2) + 1;
-  int level_coarse = level+1;
-  int i_fine, j_fine;
-  
-  //! Initialize the solution guess and forcing term for the coarse level
-  
-  for (int i = 0; i < n_coarse; i++) {
-    for (int j = 0; j < n_coarse; j++) {
-      phi[level_coarse][i][j] = 0.0;
-      f[level_coarse][i][j]   = 0.0;
-    }
-  }
-  
-  //! Transfer the forcing term to the coarse mesh. We are
-  //! restricting by weighting the values on the fine mesh that
-  //! surround the given coarse node. The residual on the boundary
-  //! nodes should be zero, so we avoid those points in our loop.
-  
-  for (int i = 1; i < n_coarse-1; i++) {
-    for (int j = 1; j < n_coarse-1; j++) {
-      
-      //! Calculate the indices on the fine mesh for clarity
-      
-      i_fine = (i*2); j_fine = (j*2);
-      
-      //! Perform the restriction operation for this node by injection
-      
-      f[level_coarse][i][j] = (  aux[level][i_fine-1][j_fine+1]*(1.0/16.0)
-                               + aux[level][ i_fine ][j_fine+1]*(1.0/8.0)
-                               + aux[level][i_fine+1][j_fine+1]*(1.0/16.0)
-                               + aux[level][i_fine-1][ j_fine ]*(1.0/8.0)
-                               + aux[level][ i_fine ][ j_fine ]*(1.0/4.0)
-                               + aux[level][i_fine+1][ j_fine ]*(1.0/8.0)
-                               + aux[level][i_fine-1][j_fine-1]*(1.0/16.0)
-                               + aux[level][ i_fine ][j_fine-1]*(1.0/8.0)
-                               + aux[level][i_fine+1][j_fine-1]*(1.0/16.0));
-      
-    }
-  }
-  
-}
 
-void prolongate_weighted(double ***phi, double ***aux, int n_nodes,
-                         int level) {
-  
-  //! Prolongate the solution, i.e., transfer it from a coarse to fine level.
-  //! We compute a correction to the fine grid solution and add. To create
-  //! the correction from the coarse solution, nodes that lie on top of each
-  //! other will be transfered directly from coarse->fine, while neighbors
-  //! are interpolated using a weighting of neighbors.
-  
-  //! Compute some information about the coarse level
-  
-  int n_coarse     = (n_nodes-1)/(2) + 1;
-  int level_coarse = level+1;
-  int i_fine, j_fine;
-  
-  //! Initialize correction to zero, just in case
-  
-  for (int i = 0; i < n_nodes; i++) {
-    for (int j = 0; j < n_nodes; j++) {
-      aux[level][i][j] = 0.0;
-    }
-  }
-  
-  //! Loop over all coarse points and set the solution on the
-  //! coincident set of points on the fine grid. At the same time,
-  //! contribute weighted values at coarse grid nodes to the set of
-  //! neighboring fine grid nodes that are not coincident.
-  
-  for (int i = 1; i < n_coarse-1; i++) {
-    for (int j = 1; j < n_coarse-1; j++) {
-      
-      //! Calculate the indices on the fine mesh for clarity
-      
-      i_fine = i*2; j_fine = j*2;
-      
-      //! Perform the prolongation operation by copying the value for
-      //! a coincident node on the fine mesh and also incrementing the
-      //! values for the neighbors.
-      
-      aux[level][i_fine-1][j_fine+1] += phi[level_coarse][i][j]*(1.0/4.0);
-      aux[level][ i_fine ][j_fine+1] += phi[level_coarse][i][j]*(1.0/2.0);
-      aux[level][i_fine+1][j_fine+1] += phi[level_coarse][i][j]*(1.0/4.0);
-      aux[level][i_fine-1][ j_fine ] += phi[level_coarse][i][j]*(1.0/2.0);
-      aux[level][ i_fine ][ j_fine ]  = phi[level_coarse][i][j];
-      aux[level][i_fine+1][ j_fine ] += phi[level_coarse][i][j]*(1.0/2.0);
-      aux[level][i_fine-1][j_fine-1] += phi[level_coarse][i][j]*(1.0/4.0);
-      aux[level][ i_fine ][j_fine-1] += phi[level_coarse][i][j]*(1.0/2.0);
-      aux[level][i_fine+1][j_fine-1] += phi[level_coarse][i][j]*(1.0/4.0);
-      
-    }
-  }
-  
-  //! Finally, add the coarse grid correction to the fine grid,
-  //! i.e., phi_fine = phi_fine + prolong(phi_coarse)
-  
-  for (int i = 0; i < n_nodes; i++) {
-    for (int j = 0; j < n_nodes; j++) {
-      phi[level][i][j] += aux[level][i][j];
-    }
-  }
-  
-}
 
 double compute_residual(double **phi, double **f, double **residual,
                         int n_nodes) {
@@ -764,8 +451,10 @@ double compute_residual(double **phi, double **f, double **residual,
   norm = 0.0;
   for (int i = 1; i < n_nodes-1; i++) {
     for (int j = 1; j < n_nodes-1; j++) {
-      residual[i][j] = f[i][j] + (phi[i][j-1] + phi[i-1][j] +
+        residual[i][j] = f[i][j] + (phi[i][j-1] + phi[i-1][j] +
                                 phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j])/h2;
+      //residual[i][j] = (h2*f[i][j] + (phi[i][j-1] + phi[i-1][j] +
+      //                            phi[i+1][j] + phi[i][j+1] - 4.0*phi[i][j]))/phi[i][j]/pow(n_nodes-1.0,2.0);
                                 
                                   
       norm += residual[i][j]*residual[i][j];

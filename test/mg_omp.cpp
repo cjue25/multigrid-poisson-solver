@@ -69,9 +69,9 @@ const int FINE_MESH = 0;
 
 #define OMP
 
-#define RELAX 1.7
+#define RELAX 1.2
 
-#define thread 8 
+#define thread 3 
 /******************************************************************************/
 /* Function prototypes. All necessary functions are contained in this file.   */
 /******************************************************************************/
