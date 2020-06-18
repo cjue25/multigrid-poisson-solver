@@ -42,7 +42,7 @@ const int FINE_MESH = 0;
 /******************************************************************************/
 
 //! Number of nodes in the i & j directions
-#define NUM_NODES 17
+#define NUM_NODES 129
 
 //! Maximum number of multigrid cycles
 #define MG_CYCLES 10000
@@ -57,7 +57,7 @@ const int FINE_MESH = 0;
 #define SMOOTHER 2
 
 //! Flag controlling whether to write Tecplot mesh/solution files (Yes=1,No=0)
-#define VISUALIZE 0
+#define VISUALIZE 1
 
 //! Iteration frequency with which to print to console and write output files
 #define FREQUENCY 1
@@ -233,7 +233,7 @@ int main(int argc, char* argv[]) {
   //! Print final message to console
   
   if (stop_calc) {
-    printf("\nConverged %3.1f orders of magnitude...\n", tolerance);
+    //printf("\nConverged %3.1f orders of magnitude...\n", tolerance);
     printf("#============================================#\n\n");
   } else printf("\n#============================================#\n\n");
   
@@ -463,74 +463,60 @@ void intitialize_solution(double **phi, double **phi_exact, double **f,
   printf("Successfully initialized solution...\n");
   
 }
+void smooth_total(double ***phi, double ***f, double ***aux,
+                  int n_nodes, int n_sweeps, int level) {
+  //printf("%i\n",level);
+  switch (SMOOTHER) {
+    case JACOBI:
+      smooth_jacobi(phi[level], f[level], aux[level], n_nodes, n_sweeps);
+      break;
+    case GAUSS_SEIDEL:
+      smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
+      break;
+    case SOR:
+      smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
+      break;
+    default:
+      printf( "\n   !!! Error !!!\n" );
+      printf( " Unrecognized smoother. \n\n");
+      exit(1);
+      break;
+  }
+}
 
 void multigrid_cycle(double ***phi, double ***f, double ***aux, int n_nodes,
                      int n_sweeps, int n_levels, int level) {
-  
-  //! Pre-smooth the solution on this level with a number of sweeps
-  
-  switch (SMOOTHER) {
-    case JACOBI:
-      smooth_jacobi(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    case GAUSS_SEIDEL:
-      smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    case SOR:
-      smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    default:
-      printf( "\n   !!! Error !!!\n" );
-      printf( " Unrecognized smoother. \n\n");
-      exit(1);
-      break;
-  }
-  
-  //! If we are not on the coarsest mesh, continue the downstroke of
-  //! the multigrid cycle in a recursive manner.
-  
-  if (level < n_levels-1) {
-    
-    //! Restrict the fine solution down onto the coarser grid by
-    //! computing the forcing term, i.e., f_coarse = restrict(residual_fine)
-    
+  for (int i = 0; i < n_levels-1; i++) {
     restrict_weighted(phi, f, aux, n_nodes, level);
-    
-    //! Compute some information about the coarse level
-    
-    int n_coarse     = (n_nodes-1)/(2) + 1;
-    int level_coarse = level + 1;
-    
-    //! Call the recursive multigrid cycle method on the next coarse level
-   
-    multigrid_cycle(phi, f, aux, n_coarse, n_sweeps, n_levels, level_coarse);
-    
-    //! Prolongate the solution for moving up to finer mesh levels,
-    //! i.e., phi_fine = phi_fine + prolong(phi_coarse)
-  
+    level       += 1 ;
+    n_nodes     = (n_nodes-1)/(2) + 1;
+  }
+
+  smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+
+  for(int l = 1; l < n_levels; l++){
+    for(int i = 0; i < l; i++){
+      level       -= 1 ;
+      n_nodes     = (n_nodes-1)*(2) + 1;
+      prolongate_weighted(phi, aux, n_nodes, level);
+      smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+    }
+//    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+    for (int i = 0; i < l; i++) {
+      smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+      restrict_weighted(phi, f, aux, n_nodes, level);
+      level       += 1 ;
+      n_nodes     = (n_nodes-1)/(2) + 1;
+    }
+    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
+  }
+  for(int i = 0; i < n_levels-1; i++){
+    level       -= 1 ;
+    n_nodes     = (n_nodes-1)*(2) + 1;
     prolongate_weighted(phi, aux, n_nodes, level);
-    
+    smooth_total(phi, f, aux, n_nodes, n_sweeps, level);
   }
-  
-  //! Post-smooth the solution with a number of sweeps before exit
-  
-  switch (SMOOTHER) {
-    case JACOBI:
-      smooth_jacobi(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    case GAUSS_SEIDEL:
-      smooth_gauss_seidel(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    case SOR:
-      smooth_sor(phi[level], f[level], aux[level], n_nodes, n_sweeps);
-      break;
-    default:
-      printf( "\n   !!! Error !!!\n" );
-      printf( " Unrecognized smoother. \n\n");
-      exit(1);
-      break;
-  }
-  
 }
 
 void smooth_jacobi(double **phi, double **f, double **aux,
